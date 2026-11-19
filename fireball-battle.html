@@ -1,0 +1,222 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#16152e"><title>School Fireball Battle</title><style>
+:root{font-family:system-ui,-apple-system,sans-serif;color:#f5f1ff;background:#121226}*{box-sizing:border-box}body{margin:0}main{max-width:1050px;margin:auto;padding:14px}h1{font-size:clamp(22px,4vw,36px);margin:5px 0}.sub{color:#c8c3e7}.panel{background:#232343;border:2px solid #484676;border-radius:16px;padding:13px;margin:12px 0}.top{display:flex;gap:12px;justify-content:space-between;align-items:center;flex-wrap:wrap}button,select{font:inherit;border-radius:10px;border:2px solid #8b86bd;background:#37345d;color:white;padding:10px 12px;cursor:pointer}button:focus-visible,select:focus-visible{outline:3px solid #ffe17c}button:active{transform:scale(.98)}.battle{display:flex;align-items:center;justify-content:space-around;gap:12px;min-height:125px;background:linear-gradient(#242347,#363058);border-radius:12px;text-align:center}.sprite{font-size:44px;line-height:1.2}.monster{font-size:58px}.health{height:12px;background:#5e3148;border-radius:10px;overflow:hidden;margin:8px 0}.health span{display:block;background:#ff6b91;height:100%;transition:width .4s}.controls{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.controls label{display:flex;align-items:center;gap:6px}.controls input{width:22px;height:22px}.track{margin:18px 0}.trackhead{display:flex;justify-content:space-between;align-items:center;gap:8px}.scroll{overflow-x:auto;touch-action:pan-x;border:1px solid #54507b;border-radius:12px;background:#181831;padding:8px 0}.line{display:block;height:150px;max-width:none}.tick{cursor:pointer;touch-action:manipulation}.tick:focus{outline:none}.tick:focus-visible rect{stroke:#fff;stroke-width:3}.result{font-size:19px;font-weight:700;min-height:30px}.hint{color:#ffdf79}.success{color:#8effbb}.small{font-size:13px;color:#c8c3e7}.pill{padding:4px 9px;border-radius:20px;background:#48416b}.footer{display:flex;gap:10px;flex-wrap:wrap}.screenreader{position:absolute;left:-9999px}@media(max-width:600px){.sprite{font-size:34px}.monster{font-size:44px}.panel{padding:10px}.battle{min-height:105px}}
+</style></head><body><main><nav><a href="./" style="color:#c8c3e7">← All games</a></nav><header class="top"><div><h1>🔥 School Fireball Battle</h1><div class="sub">Dexter + a surprise ally • Find the first shared fireball bounce!</div></div><strong id="level"></strong></header><section class="panel"><div class="battle"><div><div class="sprite">🗡️ 🔥</div><strong>Dexter</strong></div><div><div class="sprite" id="allyIcon">✨</div><strong id="ally">Ally</strong><div class="small" id="weapon"></div></div><div><div class="monster" id="enemyIcon">👾</div><strong id="enemy">Enemy</strong><div class="health"><span id="hp" style="width:100%"></span></div></div></div><p id="story" class="small"></p></section><section class="panel"><div class="controls"><label>Start at level <select id="start-level"></select></label><button id="start" type="button">Start level</button><button id="restart" type="button">Restart game</button><strong id="gems"></strong><button id="sound" type="button" aria-pressed="true">Sound on</button><button id="voice" type="button" aria-pressed="true">Voice on</button><button id="undo">↶ Undo last bounce</button><button id="reset">↻ Retry same numbers</button></div><p class="small">Tap the number <b>directly on each line</b>. Count the tiny ticks: every tick is one space. Tap the last landing on either line to undo that bounce. Swipe sideways if the line extends off screen. The two lines use exactly the same scale.</p><div id="tracks"></div><div class="result" id="feedback" role="status" aria-live="polite"></div><div class="footer"><span class="pill" id="progress">Find the first shared landing</span><button id="next" hidden>Next battle ➜</button></div></section><p class="small">Runs entirely in your browser. No account, ads, tracking or ChatGPT access. Level and hint gems are saved on this device.</p></main><script>
+const allies=[['Jude','🥊','spiked brass knuckles'],['Nicholas','🦾','gold-and-iron gauntlets'],['Reuben','🪄','shape-shifting stick'],['Ralsei','🧙','green cloak and fire magic'],['Susie','🪓','giant axe'],['Kris','⚔️','sword and dark blue armour'],['Noelle','❄️','ice magic']];
+const enemies=[['Animated Dummy','🎯'],['Froggit','🐸'],['Queen','👑'],['Lantern Wraith','🏮'],['Clockwork Moth','🦋'],['Mirror Knight','🛡️'],['Storm Golem','⛈️'],['Moon Serpent','🐉']];
+const $=id=>document.getElementById(id),rand=arr=>arr[Math.floor(Math.random()*arr.length)],gcd=(a,b)=>b?gcd(b,a%b):a;
+const lcm = ([a,b]) => a*b/gcd(a,b);
+const levelTargets=[6,8,10,12,15,18,20,24,28,30,36,40,48,56,63,72,90,110];
+const pairs=[];
+for(let a=2;a<=12;a++){
+  for(let b=a+1;b<=14;b++){
+    const pair=[a,b];
+    pairs.push({pair,goal:lcm(pair),key:a+','+b});
+  }
+}
+const levelPools=levelTargets.map(target=>{
+  const closest=[...pairs].sort((a,b)=>Math.abs(a.goal-target)-Math.abs(b.goal-target));
+  const range=Math.abs(closest[5].goal-target);
+  return closest.filter(entry=>Math.abs(entry.goal-target)<=range);
+});
+function chooseSteps(level){
+  const tier=Math.min(level,levelPools.length);
+  const storageKey='fireball-last-pair-'+tier;
+  let previous;
+  try { previous=localStorage.getItem(storageKey); } catch {}
+  const pool=levelPools[tier-1];
+  const entry=rand(pool.filter(candidate=>candidate.key!==previous));
+  try { localStorage.setItem(storageKey,entry.key); } catch {}
+  return Math.random()<.5?entry.pair:[...entry.pair].reverse();
+}
+function readProgress(){
+  try {
+    const saved=JSON.parse(localStorage.getItem('fireball-progress'));
+    if(Number.isSafeInteger(saved?.level)&&saved.level>0&&Number.isSafeInteger(saved.gems)&&saved.gems>=0)return saved;
+  } catch {}
+  return {level:1,gems:1};
+}
+let progress=readProgress(), level=progress.level;
+let steps, landings, history, goal, limit, won, hints, sound=true, voice=true, audio;
+let speechVersion=0;
+let speechTimer;
+for(let n=1;n<=levelTargets.length;n++){
+  const option=document.createElement('option');
+  option.value=String(n);
+  option.textContent=String(n);
+  $('start-level').append(option);
+}
+$('start').onclick=()=>{
+  progress.level=Number($('start-level').value);
+  saveProgress();
+  newBattle();
+};
+$('restart').onclick=()=>{
+  progress={level:1,gems:1};
+  saveProgress();
+  newBattle();
+};
+function saveProgress(){
+  try { localStorage.setItem('fireball-progress',JSON.stringify(progress)); } catch {}
+}
+function prepareAudio(){
+  if(!sound)return;
+  try {
+    const Audio=window.AudioContext||window.webkitAudioContext;
+    audio??=new Audio();
+    if(audio.state==='suspended')audio.resume().catch(()=>{});
+  } catch {}
+}
+function play(explosion){
+  if(!sound)return;
+  try {
+    const Audio=window.AudioContext||window.webkitAudioContext;
+    audio??=new Audio();
+    const ready=audio.state==='suspended'?audio.resume():Promise.resolve();
+    ready.then(()=>{
+      const now=audio.currentTime, duration=explosion ? .42 : .15;
+      const tone=audio.createOscillator(), gain=audio.createGain();
+      tone.type=explosion?'triangle':'sine';
+      tone.frequency.setValueAtTime(explosion?125:440,now);
+      tone.frequency.exponentialRampToValueAtTime(explosion?28:740,now+duration);
+      gain.gain.setValueAtTime(explosion ? .30 : .13,now);
+      gain.gain.exponentialRampToValueAtTime(.001,now+duration);
+      tone.connect(gain).connect(audio.destination);
+      tone.start(now);
+      tone.stop(now+duration);
+      if(explosion){
+        const buffer=audio.createBuffer(1,Math.floor(audio.sampleRate*duration),audio.sampleRate);
+        const samples=buffer.getChannelData(0);
+        for(let i=0;i<samples.length;i++)samples[i]=(Math.random()*2-1)*.55*(1-i/samples.length)**2;
+        const noise=audio.createBufferSource();
+        noise.buffer=buffer;
+        noise.connect(audio.destination);
+        noise.start(now);
+      }
+    }).catch(()=>{});
+  } catch {}
+}
+function setup(){
+  speechVersion++;
+  clearTimeout(speechTimer);
+  try { window.speechSynthesis?.cancel(); } catch {}
+  landings=[[],[]]; history=[]; won=false; hints=[null,null];
+  goal=lcm(steps); limit=Math.max(24,Math.ceil((goal+Math.max(...steps))/12)*12);
+  $('hp').style.width='100%';
+  $('next').hidden=true;
+  $('reset').disabled=false;
+  $('feedback').textContent='Tap the first landing for either fireball.';
+  render(true);
+}
+function newBattle(){
+  level=progress.level;
+  steps=chooseSteps(level);
+  $('start-level').value=String(Math.min(level,levelTargets.length));
+  const ally=rand(allies), enemy=enemies[(level-1)%enemies.length];
+  $('level').textContent='Level '+level;
+  $('ally').textContent=ally[0];
+  $('allyIcon').textContent=ally[1];
+  $('weapon').textContent=ally[2];
+  $('enemy').textContent=enemy[0];
+  $('enemyIcon').textContent=enemy[1];
+  $('story').textContent='Dexter and '+ally[0]+' face '+enemy[0]+'! Their fireballs combine at the first number where both bounce.';
+  setup();
+}
+function nextLanding(i){return (landings[i].at(-1)||0)+steps[i]}
+function useHint(i){
+  const tick=nextLanding(i);
+  if(won||hints[i]!==null||!progress.gems||tick>limit)return;
+  hints[i]=tick;
+  progress.gems--;
+  saveProgress();
+  $('feedback').textContent=(i===0?'Dexter':$('ally').textContent)+' can bounce to '+tick+'.';
+  render(false,i,tick);
+}
+$('sound').onclick=()=>{
+  sound=!sound;
+  $('sound').textContent=sound?'Sound on':'Sound off';
+  $('sound').setAttribute('aria-pressed',String(sound));
+};
+const speech=window.speechSynthesis;
+const voiceButton=$('voice');
+voiceButton.hidden=!speech||typeof window.SpeechSynthesisUtterance!=='function';
+voiceButton.onclick=()=>{
+  voice=!voice;
+  if(!voice){speechVersion++;clearTimeout(speechTimer);try { speech?.cancel(); } catch {}}
+  voiceButton.textContent=voice?'Voice on':'Voice off';
+  voiceButton.setAttribute('aria-pressed',String(voice));
+};
+function playTap(number, effect){
+  const version=++speechVersion;
+  clearTimeout(speechTimer);
+  const finish=()=>{
+    if(version!==speechVersion)return;
+    speechVersion++;
+    clearTimeout(speechTimer);
+    if(effect==='bounce'||effect==='explosion')play(effect==='explosion');
+  };
+  if(effect)prepareAudio();
+  if(!voice||voiceButton.hidden){finish();return}
+  try {
+    speech.cancel();
+    const utterance=new window.SpeechSynthesisUtterance(String(number));
+    utterance.lang='en-GB';
+    utterance.rate=.9;
+    utterance.onend=finish;
+    utterance.onerror=finish;
+    // Some Safari sessions never send the speech completion event.
+    if(effect)speechTimer=setTimeout(()=>{
+      if(version!==speechVersion)return;
+      try { speech.cancel(); } catch {}
+      finish();
+    },2400);
+    speech.speak(utterance);
+  } catch {
+    finish();
+  }
+}
+function undoBounce(i){
+  const index=history.lastIndexOf(i);
+  if(won||index<0)return;
+  history.splice(index,1);
+  landings[i].pop();
+  hints[i]=null;
+  $('feedback').textContent='Last bounce undone for '+(i===0?'Dexter':$('ally').textContent)+'.';
+  render(false,i,landings[i].at(-1)||0);
+}
+function fire(i,k){
+  if(won)return;
+  if(k===landings[i].at(-1)){
+    undoBounce(i);
+    playTap(k);
+    return;
+  }
+  const expected=nextLanding(i);
+  if(k!==expected){
+    $('feedback').textContent='Count '+steps[i]+' spaces from '+(expected-steps[i])+' and try again.';
+    playTap(k);
+    return;
+  }
+  landings[i].push(k);
+  history.push(i);
+  hints[i]=null;
+  won=landings.every(line=>line.at(-1)===goal);
+  if(won){
+    progress={level:level+1,gems:progress.gems+1};
+    saveProgress();
+    $('hp').style.width='0%';
+    $('feedback').textContent='💥 Combo attack! The first shared landing is '+goal+'. LCM = '+goal+'. You earned 1 hint gem!';
+    $('next').hidden=false;
+    $('reset').disabled=true;
+  } else {
+    $('feedback').textContent=(i===0?'Dexter':$('ally').textContent)+' bounced at '+k+'!';
+    if(nextLanding(i)>limit)$('feedback').textContent+=' You’ve reached the end of the track. Use Undo to go back.';
+  }
+  try {
+    render(false,i,k);
+  } finally {
+    playTap(k,won?'explosion':'bounce');
+  }
+}
+function render(resetScroll=false,activeTrack,activeTick){const w=32*limit+52;const tracks=$('tracks');const offsets=[...tracks.querySelectorAll('.scroll')].map(sc=>sc.scrollLeft);tracks.replaceChildren();$('gems').textContent='💎 Hint gems: '+progress.gems;$('undo').disabled=won||history.length===0;for(let i=0;i<2;i++){const section=document.createElement('section');section.className='track';const head=document.createElement('div');head.className='trackhead';head.innerHTML='<strong>'+(i===0?'🔵 Dexter':'🟠 '+$('ally').textContent)+'</strong><span>Fireball bounces every <b>'+steps[i]+'</b> spaces</span>';const hintButton=document.createElement('button');hintButton.type='button';hintButton.textContent='💎 Hint for '+(i===0?'Dexter':$('ally').textContent);hintButton.disabled=won||hints[i]!==null||!progress.gems||nextLanding(i)>limit;hintButton.onclick=()=>useHint(i);head.append(hintButton);section.append(head);const sc=document.createElement('div');sc.className='scroll';const ns='http://www.w3.org/2000/svg',svg=document.createElementNS(ns,'svg');svg.setAttribute('viewBox',`0 0 ${w} 150`);svg.setAttribute('width',w);svg.setAttribute('height',150);svg.classList.add('line');const add=(tag,attrs,parent=svg)=>{const el=document.createElementNS(ns,tag);Object.entries(attrs).forEach(([k,v])=>el.setAttribute(k,v));parent.append(el);return el};const x=k=>26+32*k;add('line',{x1:x(0),x2:x(limit),y1:102,y2:102,stroke:'#a8a3d0','stroke-width':2});for(let k=0;k<=limit;k++){let cx=x(k),visited=landings[i].includes(k);add('line',{x1:cx,x2:cx,y1:95,y2:110,stroke:k%5===0?'#fff':'#a8a3d0','stroke-width':k%5===0?2:1});let t=add('text',{x:cx,y:130,'text-anchor':'middle',fill:visited?'#8effbb':'#f5f1ff','font-size':14,'font-weight':visited?'bold':'normal'});t.textContent=k;const rect=add('rect',{x:cx-16,y:78,width:32,height:66,fill:'transparent',role:'button',tabindex:'0','aria-label':(i===0?'Dexter':'Ally')+(k===landings[i].at(-1)&&!won?' undo bounce at ':' bounce at ')+k,class:'tick'});rect.addEventListener('click',()=>fire(i,k));rect.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();fire(i,k)}});if(visited)add('circle',{cx,cy:102,r:6,fill:i===0?'#4bcaff':'#ffb35b','pointer-events':'none'});if(hints[i]===k)add('circle',{cx,cy:102,r:13,fill:'none',stroke:'#ffe17c','stroke-width':3,'stroke-dasharray':'4 3','pointer-events':'none'})}let prev=0;for(const k of landings[i]){let mid=(x(prev)+x(k))/2;add('path',{d:`M ${x(prev)} 91 Q ${mid} 7 ${x(k)} 91`,fill:'none',stroke:i===0?'#4bcaff':'#ffb35b','stroke-width':4,'stroke-linecap':'round','pointer-events':'none'});prev=k}const at=landings[i].at(-1)||0;let orb=add('text',{x:x(at),y:68,'text-anchor':'middle','font-size':25,'pointer-events':'none'});orb.textContent=i===0?'🔵':'🟠';sc.append(svg);section.append(sc);tracks.append(section);sc.scrollLeft=resetScroll?0:(offsets[i]||0);if(activeTrack===i){const at=x(activeTick);if(at<sc.scrollLeft+24||at>sc.scrollLeft+sc.clientWidth-24)sc.scrollLeft=Math.max(0,at-sc.clientWidth/2)}if(won)add('text',{x:x(goal),y:64,'text-anchor':'middle','font-size':40,'pointer-events':'none'}).textContent='💥';}$('progress').textContent=won?'🏆 Victory! LCM = '+goal:'Dexter: '+(landings[0].at(-1)||0)+'  •  Ally: '+(landings[1].at(-1)||0)}
+$('undo').onclick=()=>undoBounce(history.at(-1));$('reset').onclick=setup;$('next').onclick=newBattle;newBattle();
+</script></body></html>

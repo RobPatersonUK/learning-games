@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en-GB">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#16152e">
+<title>Dexter’s Fireball Battle — Factor Forge</title>
+<style>
+:root{font-family:system-ui,-apple-system,sans-serif;color:#f5f1ff;background:#121226}*{box-sizing:border-box}body{margin:0}main{max-width:1050px;margin:auto;padding:14px}h1{font-size:clamp(22px,4vw,36px);margin:5px 0}.sub{color:#c8c3e7}.panel{background:#232343;border:2px solid #484676;border-radius:16px;padding:13px;margin:12px 0}.top{display:flex;gap:12px;justify-content:space-between;align-items:center;flex-wrap:wrap}button,select{font:inherit;border-radius:10px;border:2px solid #8b86bd;background:#37345d;color:white;padding:10px 12px;cursor:pointer}button:focus-visible,select:focus-visible{outline:3px solid #ffe17c}button:active{transform:scale(.98)}.battle{display:flex;align-items:center;justify-content:space-around;gap:12px;min-height:125px;background:linear-gradient(#242347,#363058);border-radius:12px;text-align:center}.sprite{font-size:44px;line-height:1.2}.monster{font-size:58px}.health{height:12px;background:#5e3148;border-radius:10px;overflow:hidden;margin:8px 0}.health span{display:block;background:#ff6b91;height:100%;transition:width .4s}.controls{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.controls label{display:flex;align-items:center;gap:6px}.controls input{width:22px;height:22px}.track{margin:18px 0}.trackhead{display:flex;justify-content:space-between;align-items:center;gap:8px}.scroll{overflow-x:auto;touch-action:pan-x;border:1px solid #54507b;border-radius:12px;background:#181831;padding:8px 0}.line{display:block;height:150px;max-width:none}.tick{cursor:pointer;touch-action:manipulation}.tick:focus{outline:none}.tick:focus-visible rect{stroke:#fff;stroke-width:3}.result{font-size:19px;font-weight:700;min-height:30px}.hint{color:#ffdf79}.success{color:#8effbb}.small{font-size:13px;color:#c8c3e7}.pill{padding:4px 9px;border-radius:20px;background:#48416b}.footer{display:flex;gap:10px;flex-wrap:wrap}.screenreader{position:absolute;left:-9999px}@media(max-width:600px){.sprite{font-size:34px}.monster{font-size:44px}.panel{padding:10px}.battle{min-height:105px}}
+a {color:#c8c3e7}
+button:disabled {opacity:.55;cursor:default}
+[hidden] {display:none!important}
+.trackhead {margin-bottom:6px}
+.tick:focus-visible {stroke:#ffe17c;stroke-width:2}
+.sizes {display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 16px}
+.sizes button {min-width:44px;min-height:44px}
+.sizes button[aria-pressed="true"] {border-color:#ffe17c;background:#514674}
+.sparks {display:flex;flex-wrap:wrap;gap:6px;padding:9px;background:#181831;border:1px solid #54507b;border-radius:10px}
+.packet {display:inline-flex;flex-wrap:wrap;gap:3px;padding:5px;border:1px solid var(--spark);border-radius:7px}
+.packet.leftover {border:2px dashed #ffe17c}
+.packet.loose {border-color:transparent;padding:0}
+.spark {width:9px;height:9px;border-radius:50%;background:var(--spark)}
+.track p {margin:6px 0 0}
+.guide {color:#ffe17c;margin:8px 0}
+#feedback {margin:12px 0}
+.scroll {touch-action:auto}
+.fusion {animation:fusion .4s ease-out}
+@keyframes fusion {from {transform:scale(.5);opacity:.4} to {transform:scale(1);opacity:1}}
+@media(prefers-reduced-motion:reduce) {.fusion {animation:none}}
+</style>
+<body>
+<main>
+  <nav><a href="./">← All games</a></nav>
+  <header class="top">
+    <div><h1>🔥 Dexter’s Factor Forge</h1><div class="sub">Bundle sparks to power your fireball!</div></div>
+    <strong id="level"></strong>
+  </header>
+  <section class="panel">
+    <div class="battle">
+      <div><div class="sprite">🗡️ 🔥</div><strong>Dexter</strong></div>
+      <div><div class="sprite">✨ 🪄</div><strong>Forge Mage</strong></div>
+      <div><div class="monster" id="monster"></div><strong id="enemy"></strong><div class="health"><span id="hp"></span></div></div>
+    </div>
+  </section>
+  <section class="panel">
+    <div class="controls">
+      <label>Battle <select id="battle"></select></label>
+      <button id="sound" type="button" aria-pressed="true">Sound on</button>
+      <button id="voice" type="button" aria-pressed="true">Voice on</button>
+    </div>
+    <h2 id="challenge"></h2>
+    <p>Put the same number of sparks in every bundle. Find the biggest bundle size that uses up both colours.</p>
+    <p class="guide" id="guide"></p>
+    <strong id="size-label">Tap a bundle size</strong>
+    <div class="sizes" id="sizes" role="group" aria-labelledby="size-label"></div>
+    <div class="controls">
+      <button type="button" id="reset">↻ Retry battle</button>
+    </div>
+    <div id="tracks"></div>
+    <div class="result" id="feedback" role="status" aria-live="polite"></div>
+    <div class="footer"><span class="pill" id="best"></span><button id="next" hidden>Next battle ➜</button></div>
+  </section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const battles = [
+  [8, 12, '🎯', 'Training Dummy'],
+  [12, 18, '🪨', 'Stone Golem'],
+  [18, 24, '🏮', 'Lantern Wraith'],
+  [20, 30, '🦋', 'Clockwork Moth'],
+  [8, 15, '🛡️', 'Mirror Knight'],
+  [24, 36, '⛈️', 'Storm Golem'],
+  [36, 48, '🐉', 'Moon Serpent']
+];
+const colours = ['#4bcaff', '#ffb35b'];
+const labels = ['Blue', 'Orange'];
+const picker = $('battle');
+battles.forEach((battle, i) => picker.add(new Option(i + 1 + ' · ' + battle[3], i)));
+let targets, choices, winner, best, won, selected;
+let audio, sound = true, voice = true, speechTimer;
+const speech = window.speechSynthesis;
+$('voice').hidden = !speech || !window.SpeechSynthesisUtterance;
+function prepareAudio(){
+  if(!sound)return;
+  try {
+    const Audio=window.AudioContext||window.webkitAudioContext;
+    audio??=new Audio();
+    if(audio.state==='suspended')audio.resume().catch(()=>{});
+  } catch {}
+}
+function play(explosion){
+  if(!sound)return;
+  try {
+    const Audio=window.AudioContext||window.webkitAudioContext;
+    audio??=new Audio();
+    const ready=audio.state==='suspended'?audio.resume():Promise.resolve();
+    ready.then(()=>{
+      const now=audio.currentTime, duration=explosion ? .42 : .15;
+      const tone=audio.createOscillator(), gain=audio.createGain();
+      tone.type=explosion?'triangle':'sine';
+      tone.frequency.setValueAtTime(explosion?125:440,now);
+      tone.frequency.exponentialRampToValueAtTime(explosion?28:740,now+duration);
+      gain.gain.setValueAtTime(explosion ? .30 : .13,now);
+      gain.gain.exponentialRampToValueAtTime(.001,now+duration);
+      tone.connect(gain).connect(audio.destination);
+      tone.start(now);
+      tone.stop(now+duration);
+      if(explosion){
+        const buffer=audio.createBuffer(1,Math.floor(audio.sampleRate*duration),audio.sampleRate);
+        const samples=buffer.getChannelData(0);
+        for(let i=0;i<samples.length;i++)samples[i]=(Math.random()*2-1)*.55*(1-i/samples.length)**2;
+        const noise=audio.createBufferSource();
+        noise.buffer=buffer;
+        noise.connect(audio.destination);
+        noise.start(now);
+      }
+    }).catch(()=>{});
+  } catch {}
+}
+function cue(number, effect) {
+  prepareAudio();
+  cancelSpeech();
+  if (!voice || $('voice').hidden) {
+    if (effect) play(effect === 'win');
+    return;
+  }
+  const utterance = new SpeechSynthesisUtterance(String(number));
+  utterance.lang = 'en-GB';
+  let finished = false;
+  const finish = () => {
+    if (finished) return;
+    finished = true;
+    if (activeSpeech !== utterance) return;
+    activeSpeech = null;
+    clearTimeout(speechTimer);
+    if (effect) play(effect === 'win');
+  };
+  activeSpeech = utterance;
+  utterance.onend = utterance.onerror = finish;
+  speechTimer = setTimeout(finish, 1800);
+  try { speech.speak(utterance); } catch { finish(); }
+}
+
+let activeSpeech;
+function cancelSpeech() {
+  if (!activeSpeech) return;
+  activeSpeech = null;
+  clearTimeout(speechTimer);
+  try { speech.cancel(); } catch {}
+}
+
+function message(text, style = '') {
+  $('feedback').textContent = text;
+  $('feedback').className = 'result ' + style;
+}
+
+function factors(n) {
+  return Array.from({length:n}, (_, i) => n - i).filter(size => n % size === 0);
+}
+
+function startBattle() {
+  cancelSpeech();
+  const [a, b, icon, enemy] = battles[picker.selectedIndex];
+  targets = [a, b];
+  winner = factors(a).find(size => b % size === 0);
+  choices = picker.selectedIndex === 0
+    ? [1, 2, 3, 4, 6, 8]
+    : [...new Set([...factors(a), ...factors(b)])].sort((x, y) => x - y);
+  selected = best = 0;
+  won = false;
+  $('monster').textContent = icon;
+  $('monster').className = 'monster';
+  $('enemy').textContent = enemy;
+  $('level').textContent = 'Battle ' + (picker.selectedIndex + 1) + ' / ' + battles.length;
+  $('challenge').textContent = a + ' blue sparks and ' + b + ' orange sparks';
+  $('guide').textContent = picker.selectedIndex === 0 ? 'Start by tapping 3 to try bundles of three.' : '';
+  $('sizes').replaceChildren();
+  for (const size of choices) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = size;
+    button.setAttribute('aria-label', 'Try bundles of ' + size);
+    button.setAttribute('aria-pressed', 'false');
+    button.onclick = () => trySize(size);
+    $('sizes').append(button);
+  }
+  message('');
+  render();
+}
+
+function trySize(size) {
+  if (won) return;
+  selected = size;
+  const fitsBoth = targets.every(total => total % size === 0);
+  if (fitsBoth) best = Math.max(best, size);
+  won = fitsBoth && size === winner;
+  if (won) {
+    $('monster').textContent = '💥';
+    $('monster').className = 'monster fusion';
+    message('💥 Fireball fusion! ' + size + ' is the biggest size that fits both. HCF = ' + size + '.', 'success');
+  } else if (fitsBoth) {
+    message(size + ' fits both colours. That makes it a common factor. Can you find a bigger one?', 'hint');
+  } else {
+    message('Look for the sparks in a dashed box. This bundle size leaves some sparks out.', 'hint');
+  }
+  $('guide').textContent = picker.selectedIndex === 0 && size === 3 ? 'Try 2 next. Can you use every spark?' : '';
+  render();
+  cue(size, won ? 'win' : 'bounce');
+  if (won) ($('next').hidden ? $('reset') : $('next')).focus();
+}
+
+function drawSparks(total, i) {
+  const track = document.createElement('section');
+  track.className = 'track';
+  const heading = document.createElement('strong');
+  heading.textContent = (i === 0 ? '🔵 ' : '🟠 ') + labels[i] + ' · ' + total + ' sparks';
+  const row = document.createElement('div');
+  row.className = 'sparks';
+  row.style.setProperty('--spark', colours[i]);
+  row.setAttribute('aria-hidden', 'true');
+  const groups = selected ? Math.floor(total / selected) : 0;
+  const leftover = selected ? total % selected : 0;
+  const addPacket = (count, style) => {
+    const packet = document.createElement('span');
+    packet.className = 'packet ' + style;
+    for (let n = 0; n < count; n++) {
+      const spark = document.createElement('span');
+      spark.className = 'spark';
+      packet.append(spark);
+    }
+    row.append(packet);
+  };
+  if (selected) {
+    for (let group = 0; group < groups; group++) addPacket(selected, '');
+    if (leftover) addPacket(leftover, 'leftover');
+  } else {
+    addPacket(total, 'loose');
+  }
+  track.append(heading, row);
+  if (selected) {
+    const detail = document.createElement('p');
+    detail.className = leftover ? 'hint' : 'success';
+    detail.textContent = groups + (groups === 1 ? ' bundle' : ' bundles') + ' of ' + selected +
+      (leftover ? ' · ' + leftover + ' left over' : ' · exact fit ✓');
+    track.append(detail);
+  }
+  $('tracks').append(track);
+}
+
+function render() {
+  $('tracks').replaceChildren();
+  targets.forEach(drawSparks);
+  Array.from($('sizes').children).forEach((button, i) => {
+    button.disabled = won;
+    button.setAttribute('aria-pressed', choices[i] === selected);
+  });
+  $('best').textContent = best ? 'Biggest shared size found · ' + best : 'Find a size that fits both colours';
+  $('hp').style.width = won ? '0%' : best ? '65%' : '100%';
+  $('next').hidden = !won || picker.selectedIndex === battles.length - 1;
+}
+
+$('reset').onclick = picker.onchange = startBattle;
+$('next').onclick = () => {
+  picker.selectedIndex++;
+  startBattle();
+  $('sizes').firstElementChild.focus();
+};
+for (const [id, toggle] of [
+  ['sound', () => sound = !sound],
+  ['voice', () => { cancelSpeech(); return voice = !voice; }]
+]) {
+  $(id).onclick = () => {
+    const on = toggle();
+    $(id).textContent = (id === 'sound' ? 'Sound' : 'Voice') + (on ? ' on' : ' off');
+    $(id).setAttribute('aria-pressed', on);
+  };
+}
+startBattle();
+</script>
+</body>
+</html>
