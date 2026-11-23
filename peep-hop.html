@@ -1,0 +1,535 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#16152e">
+<title>Dexter’s Peep Hop</title>
+<style>
+:root {
+  font-family: system-ui, -apple-system, sans-serif;
+  color: #f5f1ff;
+  background: #121226;
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+main { max-width: 1050px; margin: auto; padding: 14px; }
+h1 { font-size: clamp(22px, 4vw, 36px); margin: 5px 0; }
+a, .sub { color: #c8c3e7; }
+.panel {
+  background: #232343;
+  border: 2px solid #484676;
+  border-radius: 16px;
+  padding: 13px;
+  margin: 12px 0;
+}
+.top, .controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.top { justify-content: space-between; }
+.controls label { display: flex; align-items: center; gap: 6px; }
+.controls input { width: 22px; height: 22px; accent-color: #b3a5ff; }
+button, select {
+  font: inherit;
+  border-radius: 10px;
+  border: 2px solid #8b86bd;
+  background: #37345d;
+  color: white;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+:focus-visible { outline: 3px solid #ffe17c; outline-offset: 2px; }
+button:active { transform: scale(.98); }
+.pill { padding: 4px 9px; border-radius: 20px; background: #48416b; }
+#bank { font-size: clamp(1.15rem, 2.8vw, 1.6rem); padding: 5px 13px; line-height: 1.25; }
+#prompt { margin: 14px 0 4px; font-size: clamp(1.6rem, 4vw, 2.25rem); line-height: 1.12; }
+#feedback { margin: 4px 0 12px; min-height: 1.5em; color: #ffe17c; }
+#feedback.complete { color: #8effbb; }
+[hidden] { display: none !important; }
+.play-area { display: grid; grid-template-columns: minmax(0, 1fr) minmax(210px, 270px); gap: 12px; }
+.array-panel { background: #181831; border: 1px solid #54507b; border-radius: 12px; padding: 12px; }
+.array-panel p { margin: 0 0 12px; }
+.array { display: grid; gap: 4px; width: fit-content; max-width: 100%; max-height: 330px; overflow: auto; }
+.array-row { display: flex; gap: 4px; }
+.array-dot { width: clamp(10px, 1.35vw, 16px); aspect-ratio: 1; border-radius: 50%; background: #c8adff; }
+.wallet { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.peep-token { position: relative; display: inline-grid; place-items: center; width: 100%; font-size: clamp(18px, 3.3vw, 30px); line-height: 1.1; }
+.peep-token.used::after {
+  content: '✕';
+  position: absolute;
+  color: #ff9cb4;
+  text-shadow: 0 0 3px #121226;
+}
+.peep-token.used { color: #ff9cb4; }
+.peep-token.used span { opacity: .35; }
+@media (max-width: 660px) { .play-area { grid-template-columns: minmax(0, 1fr); } }
+.number-board {
+  display: grid;
+  grid-template-columns: clamp(28px, 6vw, 48px) minmax(0, 1fr);
+  background: #181831;
+  border: 1px solid #54507b;
+  border-radius: 12px;
+}
+.number-board .wallet { justify-content: center; padding: 5px 2px; border-right: 1px solid #54507b; }
+.grid {
+  display: grid;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  gap: clamp(2px, .5vw, 4px);
+  padding: clamp(3px, 1vw, 8px);
+}
+.square {
+  position: relative;
+  isolation: isolate;
+  padding: 0;
+  min-height: clamp(28px, calc((100svh - 245px) / 15), 46px);
+  border: 1px solid #54507b;
+  border-radius: 6px;
+  background: #282748;
+  font-size: clamp(11px, 2.55vw, 16px);
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  touch-action: manipulation;
+}
+.square:focus-visible { z-index: 1; }
+
+.square.tapped { background: #34334f; border-color: #77739e; }
+.square.found { background: #254236; border-color: #578f74; }
+.square.crossed { border-color: #8b526a; }
+.square.hinted { background: #354667; border-color: #6883ac; color: #dbeaff; }
+.square.hinted.tapped { background: #384968; }
+.square.hinted.found { background: #254236; color: #dbeaff; }
+.square.latest { box-shadow: inset 0 0 0 2px #f5f1ff; }
+.square.latest.found { background: #28644f; border-color: #8effbb; }
+.square.latest.crossed { background: #6c324d; border-color: #ff9cb4; }
+.square-cross { display: none; }
+.square.crossed .square-cross {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #ff9cb4;
+  opacity: .45;
+  font-size: 1.4em;
+  pointer-events: none;
+}
+.square.latest.crossed .square-cross { opacity: 1; }
+@media (max-width: 600px) { .panel { padding: 8px; } }
+@media (min-width: 661px) {
+  main.is-playing {
+    height: 100dvh;
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr);
+    gap: 6px;
+    padding-block: 8px;
+  }
+  .is-playing .panel {
+    display: grid;
+    grid-template-rows: auto auto auto minmax(0, 1fr);
+    min-height: 0;
+    margin: 0;
+    padding: 9px;
+  }
+  .is-playing #prompt { margin-top: 6px; }
+  .is-playing #feedback { margin-bottom: 6px; }
+  .is-playing .play-area, .is-playing .number-board { min-height: 0; }
+  .is-playing .grid {
+    min-height: 0;
+    grid-template-rows: repeat(15, minmax(0, 1fr));
+    gap: clamp(2px, .4dvh, 4px);
+    padding: 5px;
+  }
+  .is-playing .square { min-height: 0; line-height: 1; }
+  .is-playing .peep-token { font-size: clamp(16px, 3.5dvh, 30px); }
+  .is-playing .array-panel { min-height: 0; overflow: auto; }
+  .is-playing .array { max-height: none; overflow: visible; }
+}
+</style>
+</head>
+<body>
+<main id="game">
+  <nav aria-label="Games"><a href="./">← All games</a></nav>
+  <header class="top">
+    <div>
+      <h1>🐰 Dexter’s Peep Hop</h1>
+      <div class="sub">Use the number grid to find the answer</div>
+    </div>
+    <div class="controls" aria-label="Peep rewards">
+      <strong class="pill" id="bank"></strong>
+    </div>
+  </header>
+  <section class="panel" aria-label="Times table game">
+    <div class="controls">
+      <button id="start" type="button">Start game</button>
+      <label><input id="hints" type="checkbox" checked> Skip-count hints</label>
+      <label><input id="audio" type="checkbox" checked> Audio</label>
+      <button id="restart" type="button" hidden>↻ Restart question</button>
+      <button id="next" type="button" hidden>Next question ➜</button>
+    </div>
+    <h2 id="prompt"></h2>
+    <p id="feedback" role="status"></p>
+    <div class="play-area" id="play-area" hidden>
+      <div class="number-board">
+        <div class="wallet" id="wallet" role="group"></div>
+        <div class="grid" id="grid" role="group" aria-label="Number grid, 1 to 150. Use arrow keys to move."></div>
+      </div>
+      <aside class="array-panel" aria-label="Multiplication array">
+        <p id="array-equation">Tap a multiple to see its array.</p>
+        <div class="array" id="array" aria-hidden="true"></div>
+      </aside>
+    </div>
+  </section>
+</main>
+<script>
+const hints = document.getElementById('hints');
+const prompt = document.getElementById('prompt');
+const feedback = document.getElementById('feedback');
+const next = document.getElementById('next');
+const startButton = document.getElementById('start');
+const restartButton = document.getElementById('restart');
+const playArea = document.getElementById('play-area');
+const wallet = document.getElementById('wallet');
+const bank = document.getElementById('bank');
+const array = document.getElementById('array');
+const arrayEquation = document.getElementById('array-equation');
+const audioToggle = document.getElementById('audio');
+const grid = document.getElementById('grid');
+const tableLength = 12;
+const gridWidth = 10;
+const gridLength = gridWidth * 15;
+const questionSets = [
+  [[3, 2], [2, 5], [4, 10], [5, 1], [5, 2], [4, 5]],
+  [[4, 3], [5, 4], [6, 2], [3, 6], [7, 5], [6, 4]],
+  [[6, 7], [4, 8], [8, 3], [6, 9], [8, 6], [7, 4]],
+  [[8, 7], [9, 8], [11, 6], [7, 9], [8, 11], [7, 12], [4, 2, true], [3, 5, true]],
+  [[9, 7], [11, 8], [12, 9], [8, 12], [9, 11], [10, 6], [6, 3, true], [4, 4, true]],
+  [[12, 8], [11, 7], [9, 12], [12, 11], [11, 9], [12, 12], [7, 6, true], [8, 7, true]]
+];
+let tierIndex = -1;
+let pendingQuestions = [];
+let questionIndex = -1;
+const reviewQueue = [];
+let reviewing = false;
+let missedFact;
+let missingFactor;
+const squares = [];
+let factor;
+const anchors = new Set([1, 5, 10]);
+let question;
+let landing;
+let tapped;
+let lastTap;
+const startingPeeps = 10;
+let remaining;
+const peepTokens = [];
+for (let index = 0; index < startingPeeps; index++) {
+  const token = document.createElement('span');
+  token.className = 'peep-token';
+  token.setAttribute('aria-hidden', 'true');
+  const icon = document.createElement('span');
+  icon.textContent = '🐰';
+  token.append(icon);
+  wallet.append(token);
+  peepTokens.push(token);
+}
+let banked = 0;
+let audioContext;
+let keyboardSquare = 1;
+
+for (let number = 1; number <= gridLength; number++) {
+  const square = document.createElement('button');
+  square.className = 'square';
+  square.type = 'button';
+  const label = document.createElement('span');
+  label.className = 'square-number';
+  label.textContent = number;
+  const cross = document.createElement('span');
+  cross.className = 'square-cross';
+  cross.textContent = '✕';
+  cross.setAttribute('aria-hidden', 'true');
+  square.append(label, cross);
+  square.tabIndex = number === 1 ? 0 : -1;
+  square.addEventListener('focus', () => {
+    squares[keyboardSquare - 1].tabIndex = -1;
+    keyboardSquare = number;
+    square.tabIndex = 0;
+  });
+  square.addEventListener('click', () => hop(number));
+  squares.push(square);
+  grid.append(square);
+}
+
+grid.addEventListener('keydown', event => {
+  const rowStart = Math.floor((keyboardSquare - 1) / gridWidth) * gridWidth + 1;
+  const rowEnd = rowStart + gridWidth - 1;
+  const destinations = {
+    ArrowUp: rowStart === 1 ? keyboardSquare : keyboardSquare - gridWidth,
+    ArrowDown: rowEnd === gridLength ? keyboardSquare : keyboardSquare + gridWidth,
+    ArrowLeft: Math.max(rowStart, keyboardSquare - 1),
+    ArrowRight: Math.min(rowEnd, keyboardSquare + 1),
+    Home: event.ctrlKey ? 1 : rowStart,
+    End: event.ctrlKey ? gridLength : rowEnd
+  };
+  if (!Object.hasOwn(destinations, event.key)) return;
+  event.preventDefault();
+  squares[destinations[event.key] - 1].focus();
+});
+
+function updateSquares() {
+  squares.forEach((square, index) => {
+    const number = index + 1;
+    const hinted = !missingFactor && hints.checked && anchors.has(number / factor);
+    const outcome = tapped.get(number);
+    square.classList.toggle('hinted', hinted);
+    square.classList.toggle('tapped', Boolean(outcome));
+    square.classList.toggle('found', outcome === 'landed');
+    square.classList.toggle('latest', number === lastTap);
+    square.classList.toggle('crossed', outcome === 'non-multiple' || outcome === 'incorrect');
+    const descriptions = {
+      'landed': 'landed',
+      'missed': 'selected',
+      'incorrect': 'incorrect',
+      'non-multiple': 'not a multiple'
+    };
+    const description = descriptions[outcome] || (hinted ? 'skip-count hint' : '');
+    square.setAttribute('aria-label', number + (description ? ', ' + description : ''));
+  });
+}
+
+function draw(message) {
+  const complete = landing === question * factor;
+  const product = question * factor;
+  prompt.textContent = missingFactor
+    ? (complete ? question : '?') + ' × ' + factor + ' = ' + product
+    : question + ' × ' + factor + ' = ' + (complete ? landing : '?');
+  wallet.setAttribute('aria-label', remaining + ' of ' + startingPeeps + ' Peeps left');
+  peepTokens.forEach((token, index) => token.classList.toggle('used', index >= remaining));
+  bank.textContent = 'Peeps collected: ' + banked;
+  feedback.classList.toggle('complete', complete);
+  feedback.textContent = message;
+  next.hidden = !complete;
+  updateSquares();
+}
+
+function restart() {
+  landing = 0;
+  tapped = new Map();
+  lastTap = null;
+  remaining = startingPeeps;
+  resetArray();
+  squares[keyboardSquare - 1].tabIndex = -1;
+  keyboardSquare = 1;
+  squares[0].tabIndex = 0;
+  draw('Each try costs a peep.');
+}
+
+function shuffleTier(tier, previousTable) {
+  const shuffled = [...tier];
+  for (let index = shuffled.length - 1; index > 0; index--) {
+    const pick = Math.floor(Math.random() * (index + 1));
+    [shuffled[index], shuffled[pick]] = [shuffled[pick], shuffled[index]];
+  }
+
+  function arrange(remaining, lastTable) {
+    if (!remaining.length) return [];
+    for (const [index, fact] of remaining.entries()) {
+      if (fact[1] === lastTable) continue;
+      const rest = remaining.filter((_, candidate) => candidate !== index);
+      const tail = arrange(rest, fact[1]);
+      if (tail) return [fact, ...tail];
+    }
+    return null;
+  }
+
+  return arrange(shuffled, previousTable);
+}
+
+function chooseQuestion() {
+  if (!pendingQuestions.length) {
+    tierIndex = Math.min(tierIndex + 1, questionSets.length - 1);
+    pendingQuestions = shuffleTier(questionSets[tierIndex], factor);
+  }
+  questionIndex++;
+  const reviewIndex = reviewing ? -1 : reviewQueue.findIndex(({ fact, due }) =>
+    due <= questionIndex && fact[1] !== factor && fact[1] !== pendingQuestions[0][1]);
+  reviewing = reviewIndex !== -1;
+  const fact = reviewing ? reviewQueue.splice(reviewIndex, 1)[0].fact : pendingQuestions.shift();
+  [question, factor, missingFactor = false] = fact;
+  missedFact = false;
+  restart();
+}
+
+function resetArray() {
+  if (missingFactor && hints.checked) {
+    showArray(question * factor, true);
+  } else {
+    array.replaceChildren();
+    arrayEquation.textContent = missingFactor
+      ? 'Tap the missing number of rows.'
+      : 'Tap a multiple to see its array.';
+  }
+}
+
+function showArray(number, hideFactor = false) {
+  const rows = number / factor;
+  arrayEquation.textContent = hideFactor
+    ? 'Count the rows. There are ' + factor + ' dots in each row.'
+    : rows + ' × ' + factor + ' = ' + number;
+  array.replaceChildren();
+  for (let row = 0; row < rows; row++) {
+    const line = document.createElement('div');
+    line.className = 'array-row';
+    for (let column = 0; column < factor; column++) {
+      const peep = document.createElement('span');
+      peep.className = 'array-dot';
+      line.append(peep);
+    }
+    array.append(line);
+  }
+}
+
+function speak(text) {
+  if (!audioToggle.checked || !window.speechSynthesis || !window.SpeechSynthesisUtterance) return;
+  const speech = new window.SpeechSynthesisUtterance(text);
+  speech.lang = 'en-GB';
+  window.speechSynthesis.cancel();
+  window.speechSynthesis.speak(speech);
+}
+
+function speakEquation(number, selectedFactor = factor) {
+  speak(number / selectedFactor + ' times ' + selectedFactor + ' equals ' + number);
+}
+
+function speakQuestion() {
+  speak(missingFactor
+    ? 'What times ' + factor + ' equals ' + question * factor + '?'
+    : 'What is ' + question + ' times ' + factor + '?');
+}
+
+function playTone(success, after = () => {}) {
+  if (!audioToggle.checked) return;
+  window.speechSynthesis?.cancel();
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContext) { after(); return; }
+  try {
+    audioContext ??= new AudioContext();
+    const now = audioContext.currentTime;
+    const tone = audioContext.createOscillator();
+    const volume = audioContext.createGain();
+    tone.type = 'triangle';
+    tone.frequency.setValueAtTime(success ? 520 : 270, now);
+    tone.frequency.exponentialRampToValueAtTime(success ? 880 : 95, now + .2);
+    volume.gain.setValueAtTime(.16, now);
+    volume.gain.exponentialRampToValueAtTime(.001, now + .24);
+    tone.connect(volume).connect(audioContext.destination);
+    tone.onended = after;
+    tone.start(now);
+    tone.stop(now + .24);
+    if (audioContext.state === 'suspended') audioContext.resume().catch(() => {
+      tone.onended = null;
+      after();
+    });
+  } catch {
+    after();
+  }
+}
+
+function finishAnswer() {
+  const product = question * factor;
+  landing = product;
+  tapped.set(lastTap, 'landed');
+  banked += remaining;
+  if (missedFact) {
+    reviewQueue.push({ fact: [question, factor, missingFactor], due: questionIndex + 4 });
+  }
+  const answeredFactor = factor;
+  const answeredQuestion = questionIndex;
+  playTone(true, () => {
+    if (questionIndex === answeredQuestion && landing === product) speakEquation(product, answeredFactor);
+  });
+  draw('You found it! You earned ' + remaining + (remaining === 1 ? ' Peep.' : ' Peeps.'));
+}
+
+function answerMissingFactor(number) {
+  if (number === question) {
+    showArray(question * factor);
+    finishAnswer();
+    return;
+  }
+  missedFact = true;
+  tapped.set(number, 'incorrect');
+  playTone(false);
+  draw('How many rows of ' + factor + ' make ' + question * factor + '?');
+}
+
+function hop(number) {
+  if (landing === question * factor) return;
+  remaining = Math.max(0, remaining - 1);
+  lastTap = number;
+  if (missingFactor) {
+    answerMissingFactor(number);
+    return;
+  }
+  if (number % factor !== 0) {
+    missedFact = true;
+    tapped.set(number, 'non-multiple');
+    playTone(false);
+    draw(number + ' is not a multiple of ' + factor + '. Try another square.');
+    return;
+  }
+
+  const isAnswer = number === question * factor;
+  const withinTable = number <= factor * tableLength;
+  showArray(number);
+  if (!isAnswer) speakEquation(number);
+
+  const oneHop = Math.abs(number - landing) === factor;
+  const anchorStart = landing === 0 && !missingFactor && hints.checked && anchors.has(number / factor);
+  if (!isAnswer && (!withinTable || (!oneHop && !anchorStart))) {
+    missedFact = true;
+    if (!tapped.has(number)) tapped.set(number, 'missed');
+    draw(landing ? 'Hop ' + factor + ' forwards or backwards from ' + landing + '.'
+      : hints.checked ? 'Try the first multiple or a highlighted square.'
+        : 'Start at 0 and hop forwards by ' + factor + '.');
+    return;
+  }
+  if (isAnswer) {
+    finishAnswer();
+    return;
+  }
+  landing = number;
+  tapped.set(number, 'landed');
+  draw('You’re on ' + number + '. Hop ' + factor + ' towards the answer.');
+}
+
+audioToggle.addEventListener('change', () => {
+  if (!audioToggle.checked) window.speechSynthesis?.cancel();
+});
+hints.addEventListener('change', () => {
+  if (questionIndex < 0) return;
+  if (missingFactor && landing !== question * factor) resetArray();
+  updateSquares();
+});
+startButton.addEventListener('click', () => {
+  startButton.hidden = true;
+  restartButton.hidden = false;
+  playArea.hidden = false;
+  document.getElementById('game').classList.add('is-playing');
+  chooseQuestion();
+  speakQuestion();
+  squares[0].focus();
+});
+restartButton.addEventListener('click', () => {
+  restart();
+  speakQuestion();
+});
+next.addEventListener('click', () => {
+  chooseQuestion();
+  speakQuestion();
+  squares[0].focus();
+});
+</script>
+</body>
+</html>
