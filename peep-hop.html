@@ -64,7 +64,41 @@ button:active { transform: scale(.98); }
   text-shadow: 0 0 3px #121226;
 }
 .peep-token.used { color: #ff9cb4; }
-.peep-token.used span { opacity: .35; }
+.peep-token.used .peep-chick { opacity: .35; }
+.peep-chick {
+  --sugar: radial-gradient(circle, #fff4b5 18%, transparent 32%) 0 0 / .14em .13em;
+  position: relative;
+  display: inline-block;
+  width: .98em;
+  height: .54em;
+  margin-top: .35em;
+  vertical-align: .06em;
+  border-radius: 66% 61% 49% 40% / 48% 68% 42% 54%;
+  background: var(--sugar), linear-gradient(#ffe56c, #f8bf38);
+  box-shadow: inset 0 -.06em .10em #db8e268c;
+}
+.peep-chick::before {
+  content: "";
+  position: absolute;
+  top: -.34em;
+  left: .50em;
+  width: .42em;
+  height: .49em;
+  border-radius: 58% 65% 47% 52%;
+  background: radial-gradient(circle at 69% 37%, #573520 6%, transparent 9%),
+    var(--sugar), linear-gradient(#ffec82, #ffd34b);
+}
+.peep-chick::after {
+  content: "";
+  position: absolute;
+  top: -.17em;
+  left: .86em;
+  width: .19em;
+  height: .16em;
+  border-radius: 35% 75% 65% 25%;
+  background: #f6bd3a;
+}
+.peep-token.used::after { z-index: 1; }
 @media (max-width: 660px) { .play-area { grid-template-columns: minmax(0, 1fr); } }
 .number-board {
   display: grid;
@@ -153,10 +187,11 @@ button:active { transform: scale(.98); }
   <nav aria-label="Games"><a href="./">← All games</a></nav>
   <header class="top">
     <div>
-      <h1>🐰 Dexter’s Peep Hop</h1>
+      <h1><span class="peep-chick" aria-hidden="true"></span> Dexter’s Peep Hop</h1>
       <div class="sub">Use the number grid to find the answer</div>
     </div>
     <div class="controls" aria-label="Peep rewards">
+      <strong class="pill" id="difficulty"></strong>
       <strong class="pill" id="bank"></strong>
     </div>
   </header>
@@ -167,6 +202,7 @@ button:active { transform: scale(.98); }
       <label><input id="audio" type="checkbox" checked> Audio</label>
       <button id="restart" type="button" hidden>↻ Restart question</button>
       <button id="next" type="button" hidden>Next question ➜</button>
+      <button id="reset-progress" type="button" hidden>Reset progress</button>
     </div>
     <h2 id="prompt"></h2>
     <p id="feedback" role="status"></p>
@@ -192,6 +228,9 @@ const restartButton = document.getElementById('restart');
 const playArea = document.getElementById('play-area');
 const wallet = document.getElementById('wallet');
 const bank = document.getElementById('bank');
+const difficulty = document.getElementById('difficulty');
+const resetButton = document.getElementById('reset-progress');
+const progressKey = 'peep-hop-progress-v1';
 const array = document.getElementById('array');
 const arrayEquation = document.getElementById('array-equation');
 const audioToggle = document.getElementById('audio');
@@ -229,7 +268,7 @@ for (let index = 0; index < startingPeeps; index++) {
   token.className = 'peep-token';
   token.setAttribute('aria-hidden', 'true');
   const icon = document.createElement('span');
-  icon.textContent = '🐰';
+  icon.className = 'peep-chick';
   token.append(icon);
   wallet.append(token);
   peepTokens.push(token);
@@ -306,11 +345,43 @@ function draw(message) {
     : question + ' × ' + factor + ' = ' + (complete ? landing : '?');
   wallet.setAttribute('aria-label', remaining + ' of ' + startingPeeps + ' Peeps left');
   peepTokens.forEach((token, index) => token.classList.toggle('used', index >= remaining));
-  bank.textContent = 'Peeps collected: ' + banked;
+  updateProgressDisplay();
   feedback.classList.toggle('complete', complete);
   feedback.textContent = message;
   next.hidden = !complete;
+  restartButton.hidden = complete;
   updateSquares();
+}
+
+function updateProgressDisplay() {
+  difficulty.textContent = 'Difficulty ' + Math.max(1, tierIndex + 1) + ' of ' + questionSets.length;
+  bank.textContent = 'Peeps collected: ' + banked;
+}
+
+function saveProgress() {
+  try {
+    window.localStorage.setItem(progressKey, JSON.stringify({
+      tierIndex, questionIndex, pendingQuestions, reviewQueue, reviewing, banked,
+      fact: [question, factor, missingFactor],
+      earned: landing === question * factor ? remaining : null
+    }));
+  } catch {
+    // The current session can still be played when browser storage is unavailable.
+  }
+}
+
+function readProgress() {
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(progressKey));
+    if (!Number.isInteger(saved?.tierIndex) || !questionSets[saved.tierIndex] ||
+      !Number.isInteger(saved.questionIndex) || saved.questionIndex < 0 ||
+      !Number.isInteger(saved.banked) || saved.banked < 0 ||
+      !Array.isArray(saved.fact) || !Array.isArray(saved.pendingQuestions) ||
+      !Array.isArray(saved.reviewQueue)) return null;
+    return saved;
+  } catch {
+    return null;
+  }
 }
 
 function restart() {
@@ -359,6 +430,7 @@ function chooseQuestion() {
   [question, factor, missingFactor = false] = fact;
   missedFact = false;
   restart();
+  saveProgress();
 }
 
 function resetArray() {
@@ -444,6 +516,7 @@ function finishAnswer() {
   if (missedFact) {
     reviewQueue.push({ fact: [question, factor, missingFactor], due: questionIndex + 4 });
   }
+  saveProgress();
   const answeredFactor = factor;
   const answeredQuestion = questionIndex;
   playTone(true, () => {
@@ -512,14 +585,74 @@ hints.addEventListener('change', () => {
   if (missingFactor && landing !== question * factor) resetArray();
   updateSquares();
 });
+let savedProgress = readProgress();
+if (savedProgress) {
+  tierIndex = savedProgress.tierIndex;
+  banked = savedProgress.banked;
+  startButton.textContent = 'Continue game';
+  resetButton.hidden = false;
+}
+updateProgressDisplay();
+
+function restoreProgress(saved) {
+  ({ questionIndex, pendingQuestions, reviewing } = saved);
+  reviewQueue.push(...saved.reviewQueue);
+  [question, factor, missingFactor] = saved.fact;
+  missedFact = false;
+  restart();
+  if (saved.earned === null) {
+    speakQuestion();
+    return;
+  }
+  landing = question * factor;
+  remaining = saved.earned;
+  lastTap = missingFactor ? question : landing;
+  tapped.set(lastTap, 'landed');
+  showArray(landing);
+  draw('Question complete. Ready for the next one?');
+}
+
 startButton.addEventListener('click', () => {
   startButton.hidden = true;
-  restartButton.hidden = false;
   playArea.hidden = false;
+  resetButton.hidden = false;
   document.getElementById('game').classList.add('is-playing');
-  chooseQuestion();
-  speakQuestion();
-  squares[0].focus();
+  if (savedProgress) {
+    restoreProgress(savedProgress);
+    savedProgress = null;
+  } else {
+    chooseQuestion();
+    speakQuestion();
+  }
+  if (next.hidden) squares[0].focus();
+  else next.focus();
+});
+
+resetButton.addEventListener('click', () => {
+  if (!window.confirm('Reset to difficulty 1 and clear all collected Peeps?')) return;
+  try {
+    window.localStorage.removeItem(progressKey);
+  } catch {
+    // Reset in-memory progress even if browser storage is unavailable.
+  }
+  savedProgress = null;
+  tierIndex = -1;
+  questionIndex = -1;
+  pendingQuestions = [];
+  reviewQueue.length = 0;
+  reviewing = false;
+  banked = 0;
+  factor = undefined;
+  if (playArea.hidden) {
+    startButton.textContent = 'Start game';
+    resetButton.hidden = true;
+    updateProgressDisplay();
+    startButton.focus();
+  } else {
+    chooseQuestion();
+    speakQuestion();
+    squares[0].focus();
+  }
 });
 restartButton.addEventListener('click', () => {
   restart();
